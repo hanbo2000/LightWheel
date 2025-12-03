@@ -65,14 +65,16 @@ void taskProcessor() {
 // ----------------- 主函数 -----------------
 int main() {
     try {
+        // 如果需要命令行控制显示，可以改成从 argv 解析
         // SHOW_IMAGE = true;  // 测试时可打开
 
+        // 启动任务处理线程
         std::thread worker(taskProcessor);
 
-        // Stereo camera 配置
+        // Stereo camera 配置（可选）
         StereoCameraConfig stereoCfg;
         stereoCfg.enable     = ENABLE_STEREO;
-        stereoCfg.device     = "/dev/video8";    
+        stereoCfg.device     = "/dev/video8";    // 根据实际设备修改
         stereoCfg.width      = 3200;
         stereoCfg.height     = 1200;
         stereoCfg.fps        = 30;
@@ -93,8 +95,8 @@ int main() {
 
         // 配置彩色 + 深度流（根据设备实际支持调整）
         config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
-        // config->enableVideoStream(OB_STREAM_DEPTH, 1280, 800,  30, OB_FORMAT_Y16);
-        // config->setFrameAggregateOutputMode(OB_FRAME_AGGREGATE_OUTPUT_ALL_TYPE_FRAME_REQUIRE);
+        config->enableVideoStream(OB_STREAM_DEPTH, 1280, 800,  30, OB_FORMAT_Y16);
+        config->setFrameAggregateOutputMode(OB_FRAME_AGGREGATE_OUTPUT_ALL_TYPE_FRAME_REQUIRE);
 
         uint32_t frameIndex = 0;
         auto formatConverter = std::make_shared<ob::FormatConvertFilter>();
@@ -164,17 +166,17 @@ int main() {
             // auto depthFrame = depth->as<ob::DepthFrame>();
 
 
-            // auto depth = frameSet->getFrame(OB_FRAME_DEPTH);
-            // if(!depth){
-            //     std::cout << "[WARN] No DEPTH frame\n";
-            // } else {
-            //     auto depthFrame = depth->as<ob::DepthFrame>();
+            auto depth = frameSet->getFrame(OB_FRAME_DEPTH);
+            if(!depth){
+                std::cout << "[WARN] No DEPTH frame\n";
+            } else {
+                auto depthFrame = depth->as<ob::DepthFrame>();
 
-            //     saveImageTask([depthFrame, frameIndex]() {
-            //         // 异步保存深度（无需格式转换）
-            //         saveDepthFrame(depthFrame, frameIndex);
-            //     });
-            // }
+                saveImageTask([depthFrame, frameIndex]() {
+                    // 异步保存深度（无需格式转换）
+                    saveDepthFrame(depthFrame, frameIndex);
+                });
+            }
 
             auto color = frameSet->getFrame(OB_FRAME_COLOR);
             if (!color) {
@@ -199,6 +201,7 @@ int main() {
                 continue;
             }
 
+            // 可选显示
             // if (SHOW_IMAGE) {
             //     cv::Mat colorMat(colorFrame->height(), colorFrame->width(), CV_8UC3, colorFrame->data());
             //     cv::Mat depthMat(depthFrame->height(), depthFrame->width(), CV_16UC1, depthFrame->data());
@@ -209,6 +212,7 @@ int main() {
             //         break;
             // }
 
+            // 异步保存
             // saveImageTask([depthFrame, frameIndex]() {
             //     saveDepthFrame(depthFrame, frameIndex);
             // });
@@ -237,6 +241,7 @@ int main() {
             std::cerr << "[main] pipeline->stop() threw exception\n";
         }
 
+        // 停止工作线程
         {
             std::lock_guard<std::mutex> lock(queueMutex);
             stopThread = true;
@@ -262,6 +267,8 @@ int main() {
         return -1;
     }
 }
+
+// ----------------- 保存函数 & 目录创建 -----------------
 
 void saveDepthFrame(const std::shared_ptr<ob::DepthFrame> depthFrame,
                     const uint32_t frameIndex) {
